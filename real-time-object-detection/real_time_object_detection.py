@@ -51,6 +51,18 @@ def getImage():
     
 	return depth
 
+def getDepthMap():	
+	depth, timestamp = freenect.sync_get_depth()
+ 
+	np.clip(depth, 0, 2**10 - 1, depth)
+	depth >>= 2
+	depth = depth.astype(np.uint8)
+    
+	return depth
+
+def getCenter(w1, h1, w2, h2):
+    return ((w1+w2)/2.0, (h1+h2)/2.0)
+
 
 while True:
 	# grab the frame from the threaded video stream and resize it
@@ -83,7 +95,7 @@ while True:
 			idx = int(detections[0, 0, i, 1])
 			box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
 			(startX, startY, endX, endY) = box.astype("int")
-
+			cx, cy = getCenter(detections[0, 0, i,3], detections[0, 0, i,4], detections[0, 0, i,5], detections[0, 0, i,6])
 			# draw the prediction on the frame
 			label = "{}: {:.2f}%".format(CLASSES[idx],
 				confidence * 100)
@@ -92,6 +104,7 @@ while True:
 			y = startY - 15 if startY - 15 > 15 else startY + 15
 			cv2.putText(frame, label, (startX, y),
 				cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLORS[idx], 2)
+			cv2.circle(frame, (int(cx*w),int(cy*h)), 5, COLORS[idx], -1)
 
 	# show the output frame
 	cv2.imshow("Frame", frame)
