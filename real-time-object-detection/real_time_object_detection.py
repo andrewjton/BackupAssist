@@ -10,6 +10,8 @@ import imutils
 import time
 import cv2
 import freenect
+import sys
+from obstacle import obstacle
 
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
@@ -64,11 +66,14 @@ def getCenter(w1, h1, w2, h2):
     return ((w1+w2)/2.0, (h1+h2)/2.0)
 
 
+obj = obstacle("none", 0, 0, 0, -5)
+
 while True:
 	# grab the frame from the threaded video stream and resize it
 	# to have a maximum width of 400 pixels
 	frame = getImage()#freenect.sync_get_video()#vs.read()
 	frame = imutils.resize(frame, width=600)
+	frame_d = getDepthMap()
 
 	# grab the frame dimensions and convert it to a blob
 	(h, w) = frame.shape[:2]
@@ -96,6 +101,17 @@ while True:
 			box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
 			(startX, startY, endX, endY) = box.astype("int")
 			cx, cy = getCenter(detections[0, 0, i,3], detections[0, 0, i,4], detections[0, 0, i,5], detections[0, 0, i,6])
+			cx = int(cx*w)
+			cy = int(cy*h)
+			
+			#object specific calculations
+			size = (endX-startX) * (endY-startY)
+			dist = frame_d[cy, cx]
+			threatLevel = size / (dist + 1)
+			if (threatLevel > obj.getThreatLevel()):
+				obj = obstacle(CLASSES[idx], size, cx, cy, dist)
+				print("[EVENT] Switched tracking to a more dangerous obstacle")
+
 			# draw the prediction on the frame
 			label = "{}: {:.2f}%".format(CLASSES[idx],
 				confidence * 100)
@@ -104,7 +120,7 @@ while True:
 			y = startY - 15 if startY - 15 > 15 else startY + 15
 			cv2.putText(frame, label, (startX, y),
 				cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLORS[idx], 2)
-			cv2.circle(frame, (int(cx*w),int(cy*h)), 5, COLORS[idx], -1)
+			cv2.circle(frame, (cx,cy), 5, COLORS[idx], -1)
 
 	# show the output frame
 	cv2.imshow("Frame", frame)
