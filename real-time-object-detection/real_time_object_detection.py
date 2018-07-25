@@ -4,12 +4,13 @@
 # import the necessary packages
 from imutils.video import VideoStream
 from imutils.video import FPS
+from PIL import Image
 import numpy as np
 import argparse
 import imutils
 import time
 import cv2
-import freenect
+#import freenect
 
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
@@ -19,6 +20,8 @@ ap.add_argument("-m", "--model", required=True,
 	help="path to Caffe pre-trained model")
 ap.add_argument("-c", "--confidence", type=float, default=0.2,
 	help="minimum probability to filter weak detections")
+ap.add_argument("-t", "--track", action="store_true", default=False,
+	help="enable tracking/highlighting of objects")
 args = vars(ap.parse_args())
 
 # initialize the list of class labels MobileNet SSD was trained to
@@ -51,64 +54,82 @@ def getImage():
     
 	return depth
 
-
-while True:
-	# grab the frame from the threaded video stream and resize it
-	# to have a maximum width of 400 pixels
-	frame = getImage()#freenect.sync_get_video()#vs.read()
-	frame = imutils.resize(frame, width=600)
-
-	# grab the frame dimensions and convert it to a blob
+def colorizeImage(frame, startX, startY, endX, endY):
 	(h, w) = frame.shape[:2]
-	blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300, 300)),
-		0.007843, (300, 300), 127.5)
+	startX = max(0, startX)
+	startY = max(0, startY)
+	endX = min(endX, w)
+	endY = min(endY, h)
 
-	# pass the blob through the network and obtain the detections and
-	# predictions
-	net.setInput(blob)
-	detections = net.forward()
+	for i in range(startY, endY):
+		for w in range(startX, endX):
+			try:
+				pixel = frame[i][w]
+				pixel[2] = 255
+			except:
+				print("[DEBUG] Tried to draw to invalid frame region!")
+				print("[DEBUG] Coordinates" + (i,w))
 
-	# loop over the detections
-	for i in np.arange(0, detections.shape[2]):
-		# extract the confidence (i.e., probability) associated with
-		# the prediction
-		confidence = detections[0, 0, i, 2]
+if __name__ == "__main__":
+	while True:
+		# grab the frame from the threaded video stream and resize it
+		# to have a maximum width of 600 pixels
+		frame = vs.read()#getImage()#freenect.sync_get_video()
+		frame = imutils.resize(frame, width=600)
 
-		# filter out weak detections by ensuring the `confidence` is
-		# greater than the minimum confidence
-		if confidence > args["confidence"]:
-			# extract the index of the class label from the
-			# `detections`, then compute the (x, y)-coordinates of
-			# the bounding box for the object
-			idx = int(detections[0, 0, i, 1])
-			box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
-			(startX, startY, endX, endY) = box.astype("int")
+		# grab the frame dimensions and convert it to a blob
+		(h, w) = frame.shape[:2]
+		blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300, 300)),
+			0.007843, (300, 300), 127.5)
 
-			# draw the prediction on the frame
-			label = "{}: {:.2f}%".format(CLASSES[idx],
-				confidence * 100)
-			cv2.rectangle(frame, (startX, startY), (endX, endY),
-				COLORS[idx], 2)
-			y = startY - 15 if startY - 15 > 15 else startY + 15
-			cv2.putText(frame, label, (startX, y),
-				cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLORS[idx], 2)
+		# pass the blob through the network and obtain the detections and
+		# predictions
+		net.setInput(blob)
+		detections = net.forward()
 
-	# show the output frame
-	cv2.imshow("Frame", frame)
-	key = cv2.waitKey(1) & 0xFF
+		#loop over the detections
+		for i in np.arange(0, detections.shape[2]):
+			# extract the confidence (i.e., probability) associated with
+			# the prediction
+			confidence = detections[0, 0, i, 2]
 
-	# if the `q` key was pressed, break from the loop
-	if key == ord("q"):
-		break
+			# filter out weak detections by ensuring the `confidence` is
+			# greater than the minimum confidence
+			if confidence > args["confidence"]:
+				# extract the index of the class label from the
+				# `detections`, then compute the (x, y)-coordinates of
+				# the bounding box for the object
+				idx = int(detections[0, 0, i, 1])
+				box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+				(startX, startY, endX, endY) = box.astype("int")
+				if (args["track"]):
+					colorizeImage(frame, startX, startY, endX, endY)
 
-	# update the FPS counter
-	fps.update()
+				# draw the prediction on the frame
+				label = "{}: {:.2f}%".format(CLASSES[idx],
+					confidence * 100)
+				cv2.rectangle(frame, (startX, startY), (endX, endY),
+					COLORS[idx], 2)
+				y = startY - 15 if startY - 15 > 15 else startY + 15
+				cv2.putText(frame, label, (startX, y),
+					cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLORS[idx], 2)
 
-# stop the timer and display FPS information
-fps.stop()
-print("[INFO] elapsed time: {:.2f}".format(fps.elapsed()))
-print("[INFO] approx. FPS: {:.2f}".format(fps.fps()))
+		# show the output frame
+		cv2.imshow("Frame", frame)
+		key = cv2.waitKey(1) & 0xFF
 
-# do a bit of cleanup
-cv2.destroyAllWindows()
-vs.stop()
+		# if the `q` key was pressed, break from the loop
+		if key == ord("q"):
+			break
+
+		# update the FPS counter
+		fps.update()
+
+	# stop the timer and display FPS information
+	fps.stop()
+	print("[INFO] elapsed time: {:.2f}".format(fps.elapsed()))
+	print("[INFO] approx. FPS: {:.2f}".format(fps.fps()))
+
+	# do a bit of cleanup
+	cv2.destroyAllWindows()
+	vs.stop()
